@@ -1,21 +1,37 @@
 #!/bin/bash
-# AUTOMATIC WORDPRESS INSTALLER IN  AWS LINUX AMI 2018
+# AUTOMATIC WORDPRESS INSTALLER IN  AWS LINUX 2 AMI
 # CHANGE DATABASE VALUES BELOW AND PASTE IT TO USERDATA SECTION In ADVANCED SECTION WHILE LAUNCHING EC2
 # USE ELASTIC IP ADDRESS AND ALLOW SSH, HTTP AND HTTPS REQUEST IN SECURITY GROUP
 # by Dev Bhusal
 # Downloaded from https://www.devbhusal.com/wordpress.aws.sh
 
 #Change these values and keep in safe place
-db_root_password=PassWord4root
+db_root_password=PassWord4-root
 db_username=wordpress_user
-db_user_password=PassWord4user
+db_user_password=PassWord4-user
 db_name=wordpress_db
 
 # install LAMP Server
 yum update -y
-yum install -y httpd24 php72 mysql57-server
-yum install -y php72-mysqlnd php72-mcrypt php72-zip php72-intl php72-mbstring php72-gd php72-pecl-imagick
-service httpd start
+#install apache server
+yum install -y httpd
+ 
+#since amazon ami 2018 is no longer supported ,to install latest php and mysql we have to do some tricks.
+#first enable php7.xx from  amazon-linux-extra and install it
+
+amazon-linux-extras enable php7.4
+yum clean metadata
+yum install -y php php-{pear,cgi,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip,imap}
+
+#and download mysql package to yum  and install mysql server from yum
+yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+yum localinstall -y https://dev.mysql.com/get/mysql57-community-release-el7-11.noarch.rpm
+yum install -y mysql-community-server
+
+
+
+systemctl start  httpd
+systemctl start mysqld
 
 # Change OWNER and permission of directory /var/www
 usermod -a -G apache ec2-user
@@ -29,11 +45,15 @@ tar -xzf latest.tar.gz
 cp -r wordpress/* /var/www/html/
 
 # AUTOMATIC mysql_secure_installation
-service mysqld start
-mysql -e "SET PASSWORD FOR root@localhost = PASSWORD('$db_root_password');FLUSH PRIVILEGES;"
-mysql -e "DELETE FROM mysql.user WHERE User='';"
-mysql -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
-mysql -e "DROP DATABASE test;DELETE FROM mysql.db WHERE Db='test' OR Db='test_%';"
+# change permission of error log file to extract initial root password 
+chown  ec2-user:apache /var/log/mysqld.log
+temppassword=$(grep 'temporary password' /var/log/mysqld.log | grep -o ".\{12\}$")
+
+#change root password to db_root_password
+ mysql -p$temppassword --connect-expired-password  -e "SET PASSWORD FOR root@localhost = PASSWORD('$db_root_password');FLUSH PRIVILEGES;" 
+mysql -p'$db_root_password'  -e "DELETE FROM mysql.user WHERE User='';"
+mysql -p'$db_root_password' -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
+
 
 # Create database user and grant privileges
 mysql -u root -p"$db_root_password" -e "GRANT ALL PRIVILEGES ON *.* TO '$db_username'@'localhost' IDENTIFIED BY '$db_user_password';FLUSH PRIVILEGES;"
@@ -62,6 +82,7 @@ chmod -R 774 /var/www/html
 sed -i '/<Directory "\/var\/www\/html">/,/<\/Directory>/ s/AllowOverride None/AllowOverride all/' /etc/httpd/conf/httpd.conf
 
 #Make apache and mysql to autostart and restart apache
-chkconfig httpd on
-chkconfig mysqld on
-service httpd restart
+systemctl enable  httpd.service
+systemctl enable mysqld.service
+systemctl restart httpd.service
+
