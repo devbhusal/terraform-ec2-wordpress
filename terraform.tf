@@ -45,7 +45,7 @@ ingress {
 
 
 resource "aws_instance" "wordpress" {
-  ami           = "ami-02769748522663066"
+  ami           = "ami-0c9fe0dec6325a30c"
   instance_type = "t2.micro"
   security_groups=["${aws_security_group.allow_rule.name}"]
   user_data=file("./userdata.sh")
