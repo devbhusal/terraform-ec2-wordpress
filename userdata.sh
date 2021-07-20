@@ -21,7 +21,19 @@ yum install -y httpd
 
 amazon-linux-extras enable php7.4
 yum clean metadata
-yum install -y php php-{pear,cgi,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip,imap}
+yum install -y php php-{pear,cgi,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip,imap,devel}
+#install imagick extension
+yum -y install gcc ImageMagick ImageMagick-devel ImageMagick-perl
+pecl install imagick
+chmod 755 /usr/lib64/php/modules/imagick.so
+cat <<EOF >>/etc/php.d/20-imagick.ini
+
+extension=imagick
+
+EOF
+
+systemctl restart php-fpm.service
+
 
 #and download mysql package to yum  and install mysql server from yum
 yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
@@ -48,6 +60,8 @@ cp -r wordpress/* /var/www/html/
 # change permission of error log file to extract initial root password 
 chown  ec2-user:apache /var/log/mysqld.log
 temppassword=$(grep 'temporary password' /var/log/mysqld.log | grep -o ".\{12\}$")
+#and change back to mysql 
+chown  mysql:mysql /var/log/mysqld.log
 
 #change root password to db_root_password
  mysql -p$temppassword --connect-expired-password  -e "SET PASSWORD FOR root@localhost = PASSWORD('$db_root_password');FLUSH PRIVILEGES;" 
@@ -71,6 +85,7 @@ sed -i "s/password_here/$db_user_password/g" wp-config.php
 cat <<EOF >>/var/www/html/wp-config.php
 
 define( 'FS_METHOD', 'direct' );
+define('WP_MEMORY_LIMIT', '256M');
 
 EOF
 
